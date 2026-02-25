@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Rent vs Buy Calculator - Dublin, Ireland</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
 <style>
   :root {
     --bg: #0f1117;
@@ -234,6 +235,13 @@
     font-size: 0.95rem;
   }
 
+  .verdict-banner .verdict-horizon {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-top: 8px;
+    font-style: italic;
+  }
+
   .metrics-row {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -260,10 +268,44 @@
     margin-top: 4px;
   }
 
+  .metric-card .metric-detail {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+    opacity: 0.7;
+  }
+
   .chart-container {
     position: relative;
     height: 380px;
     margin-top: 8px;
+  }
+
+  /* Chart insight callout */
+  .chart-insight {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: var(--surface2);
+    border-radius: 8px;
+    border-left: 3px solid var(--accent);
+  }
+
+  .chart-insight strong {
+    color: var(--text);
+  }
+
+  /* Breakeven explainer */
+  .chart-explainer {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    padding: 12px 14px;
+    background: rgba(245,158,11,0.06);
+    border: 1px solid rgba(245,158,11,0.15);
+    border-radius: 8px;
+    line-height: 1.6;
   }
 
   /* Methodology */
@@ -282,37 +324,6 @@
   .methodology ul {
     padding-left: 20px;
   }
-
-  /* Tabs */
-  .tab-bar {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 16px;
-    background: var(--surface2);
-    border-radius: 8px;
-    padding: 4px;
-  }
-
-  .tab-btn {
-    flex: 1;
-    padding: 8px 12px;
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    font-size: 0.85rem;
-    cursor: pointer;
-    border-radius: 6px;
-    transition: all 0.2s;
-    font-weight: 500;
-  }
-
-  .tab-btn.active {
-    background: var(--accent);
-    color: white;
-  }
-
-  .tab-content { display: none; }
-  .tab-content.active { display: block; }
 
   /* Spinner */
   .spinner {
@@ -357,6 +368,41 @@
     grid-template-columns: 1fr 1fr;
   }
 
+  /* Advanced toggle */
+  .advanced-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+    user-select: none;
+  }
+
+  .advanced-toggle:hover { color: var(--text); }
+
+  .advanced-toggle .arrow {
+    transition: transform 0.2s;
+    font-size: 0.7rem;
+  }
+
+  .advanced-toggle .arrow.open {
+    transform: rotate(90deg);
+  }
+
+  .advanced-params {
+    display: none;
+    margin-top: 12px;
+  }
+
+  .advanced-params.visible {
+    display: block;
+  }
+
   /* Tooltip */
   .info-tip {
     display: inline-block;
@@ -390,6 +436,15 @@
     line-height: 1.4;
   }
 
+  /* Defaults label */
+  .defaults-note {
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+    opacity: 0.7;
+  }
+
   /* Footer */
   footer {
     text-align: center;
@@ -407,11 +462,12 @@
     .card { padding: 16px; }
     .params-grid { grid-template-columns: 1fr 1fr; }
     .custom-fields.visible { grid-template-columns: 1fr; }
-    .chart-container { height: 300px; }
+    .chart-container { height: 280px; }
     .area-selector { flex-direction: column; }
     .area-selector .field { min-width: unset; }
     .metrics-row { grid-template-columns: 1fr 1fr; }
     .data-preview { grid-template-columns: 1fr 1fr; }
+    .verdict-banner .verdict-title { font-size: 1.3rem; }
   }
 </style>
 </head>
@@ -482,7 +538,7 @@
       </div>
       <div class="stat">
         <div class="value" id="preview-ratio">19.3x</div>
-        <div class="label">Price-to-Rent Ratio</div>
+        <div class="label">Price-to-Rent Ratio <span class="info-tip" data-tip="Below 15x typically favours buying; above 20x favours renting. This is a rough heuristic - the simulation gives a more complete picture.">?</span></div>
       </div>
       <div class="stat">
         <div class="value" id="preview-yield">5.2%</div>
@@ -494,6 +550,8 @@
   <!-- Parameters -->
   <div class="card">
     <h2><span class="icon">&#x2699;</span> Simulation Parameters</h2>
+
+    <!-- Essential parameters (always visible) -->
     <div class="params-grid">
       <div class="field-group">
         <label>Deposit <span class="info-tip" data-tip="Percentage of home price as down payment. Irish banks typically require 10% for first-time buyers.">?</span></label>
@@ -517,84 +575,109 @@
         </div>
       </div>
       <div class="field-group">
-        <label>Property Tax (LPT) <span class="info-tip" data-tip="Local Property Tax. Ireland's LPT is ~0.1% for homes up to ~€1M.">?</span></label>
-        <div class="input-wrap">
-          <input type="number" id="param-lpt" value="0.10" min="0" max="2" step="0.01">
-          <span class="suffix">%</span>
-        </div>
-      </div>
-      <div class="field-group">
-        <label>Maintenance <span class="info-tip" data-tip="Annual maintenance/repair costs as % of home value. Typically 0.5-1.5%.">?</span></label>
-        <div class="input-wrap">
-          <input type="number" id="param-maint" value="1.0" min="0" max="5" step="0.1">
-          <span class="suffix">%</span>
-        </div>
-      </div>
-      <div class="field-group">
-        <label>Home Insurance <span class="info-tip" data-tip="Annual home insurance as % of property value.">?</span></label>
-        <div class="input-wrap">
-          <input type="number" id="param-insurance" value="0.15" min="0" max="2" step="0.01">
-          <span class="suffix">%</span>
-        </div>
-      </div>
-      <div class="field-group">
-        <label>Home Appreciation <span class="info-tip" data-tip="Expected annual home price growth. Mean value for simulation; actual varies.">?</span></label>
+        <label>Home Appreciation <span class="info-tip" data-tip="Expected annual home price growth. Mean value for simulation; actual varies year to year.">?</span></label>
         <div class="input-wrap">
           <input type="number" id="param-appreciation" value="3.5" min="-5" max="15" step="0.1">
           <span class="suffix">%</span>
         </div>
       </div>
       <div class="field-group">
-        <label>Rent Growth <span class="info-tip" data-tip="Expected annual rent increase. Dublin has seen 3-6% historically.">?</span></label>
-        <div class="input-wrap">
-          <input type="number" id="param-rentgrowth" value="4.0" min="0" max="15" step="0.1">
-          <span class="suffix">%</span>
-        </div>
-      </div>
-      <div class="field-group">
-        <label>Investment Return <span class="info-tip" data-tip="Expected annual return if investing the saved difference (renting scenario). Irish CGT is 33%.">?</span></label>
+        <label>Investment Return <span class="info-tip" data-tip="Expected annual return if investing the saved difference (renting scenario). Irish CGT of 33% is applied to gains.">?</span></label>
         <div class="input-wrap">
           <input type="number" id="param-invest" value="7.0" min="0" max="20" step="0.1">
           <span class="suffix">%</span>
         </div>
       </div>
-      <div class="field-group">
-        <label>Stamp Duty <span class="info-tip" data-tip="One-time tax on property purchase. 1% up to &euro;1M, 2% above in Ireland.">?</span></label>
-        <div class="input-wrap">
-          <input type="number" id="param-stamp" value="1.0" min="0" max="10" step="0.1">
-          <span class="suffix">%</span>
+    </div>
+
+    <!-- Advanced parameters (collapsed) -->
+    <div class="advanced-toggle" id="advanced-toggle" onclick="toggleAdvanced()">
+      <span class="arrow" id="advanced-arrow">&#x25B6;</span>
+      Advanced Settings
+      <span style="font-size:0.75rem; opacity:0.6; margin-left:4px">(tax rates, maintenance, volatility)</span>
+    </div>
+    <div class="advanced-params" id="advanced-params">
+      <div class="params-grid">
+        <div class="field-group">
+          <label>Property Tax (LPT) <span class="info-tip" data-tip="Local Property Tax. Ireland's LPT is ~0.1% for homes up to ~&euro;1M.">?</span></label>
+          <div class="input-wrap">
+            <input type="number" id="param-lpt" value="0.10" min="0" max="2" step="0.01">
+            <span class="suffix">%</span>
+          </div>
         </div>
-      </div>
-      <div class="field-group">
-        <label>Simulations <span class="info-tip" data-tip="Number of Monte Carlo scenarios. More = smoother results, slower.">?</span></label>
-        <div class="input-wrap">
-          <input type="number" id="param-sims" value="5000" min="500" max="50000" step="500">
-          <span class="suffix">#</span>
+        <div class="field-group">
+          <label>Maintenance <span class="info-tip" data-tip="Annual maintenance/repair costs as % of home value. Typically 0.5-1.5%.">?</span></label>
+          <div class="input-wrap">
+            <input type="number" id="param-maint" value="1.0" min="0" max="5" step="0.1">
+            <span class="suffix">%</span>
+          </div>
         </div>
-      </div>
-      <div class="field-group">
-        <label>Inflation <span class="info-tip" data-tip="Expected general inflation rate. Affects real returns.">?</span></label>
-        <div class="input-wrap">
-          <input type="number" id="param-inflation" value="2.5" min="0" max="10" step="0.1">
-          <span class="suffix">%</span>
+        <div class="field-group">
+          <label>Home Insurance <span class="info-tip" data-tip="Annual home insurance as % of property value.">?</span></label>
+          <div class="input-wrap">
+            <input type="number" id="param-insurance" value="0.15" min="0" max="2" step="0.01">
+            <span class="suffix">%</span>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Rent Growth <span class="info-tip" data-tip="Expected annual rent increase. Dublin has seen 3-6% historically.">?</span></label>
+          <div class="input-wrap">
+            <input type="number" id="param-rentgrowth" value="4.0" min="0" max="15" step="0.1">
+            <span class="suffix">%</span>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Stamp Duty <span class="info-tip" data-tip="One-time tax on property purchase. 1% up to &euro;1M, 2% above in Ireland.">?</span></label>
+          <div class="input-wrap">
+            <input type="number" id="param-stamp" value="1.0" min="0" max="10" step="0.1">
+            <span class="suffix">%</span>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Simulations <span class="info-tip" data-tip="Number of Monte Carlo scenarios. More = smoother results, slightly slower.">?</span></label>
+          <div class="input-wrap">
+            <input type="number" id="param-sims" value="5000" min="500" max="50000" step="500">
+            <span class="suffix">#</span>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Inflation <span class="info-tip" data-tip="Expected general inflation rate. Affects real returns.">?</span></label>
+          <div class="input-wrap">
+            <input type="number" id="param-inflation" value="2.5" min="0" max="10" step="0.1">
+            <span class="suffix">%</span>
+          </div>
         </div>
       </div>
     </div>
 
     <button class="run-btn" id="run-btn" onclick="runSimulation()">
-      Run 30-Year Simulation
+      Re-run Simulation
     </button>
   </div>
 
   <!-- Results Section -->
   <div class="results-section" id="results-section">
 
+    <div class="defaults-note" id="defaults-note">
+      Showing results with default parameters for Dublin 4. Adjust settings above and re-run.
+    </div>
+
     <div class="verdict-banner" id="verdict-banner">
       <div class="verdict-title" id="verdict-title"></div>
       <div class="verdict-sub" id="verdict-sub"></div>
+      <div class="verdict-horizon" id="verdict-horizon"></div>
     </div>
 
     <div class="metrics-row" id="metrics-row">
+      <div class="metric-card">
+        <div class="metric-value" id="m-buypct" style="color:var(--blue)"></div>
+        <div class="metric-label">Probability Buying Wins</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-value" id="m-breakeven" style="color:var(--orange)"></div>
+        <div class="metric-label">Median Breakeven Year</div>
+        <div class="metric-detail" id="m-breakeven-range"></div>
+      </div>
       <div class="metric-card">
         <div class="metric-value" id="m-buywealth" style="color:var(--green)"></div>
         <div class="metric-label">Median Buyer Net Worth (30yr)</div>
@@ -603,38 +686,40 @@
         <div class="metric-value" id="m-rentwealth" style="color:var(--accent2)"></div>
         <div class="metric-label">Median Renter Net Worth (30yr)</div>
       </div>
-      <div class="metric-card">
-        <div class="metric-value" id="m-breakeven" style="color:var(--orange)"></div>
-        <div class="metric-label">Median Breakeven Year</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-value" id="m-buypct" style="color:var(--blue)"></div>
-        <div class="metric-label">Probability Buying Wins</div>
-      </div>
     </div>
 
+    <!-- Chart 1: Wealth Over Time -->
     <div class="card">
-      <div class="tab-bar">
-        <button class="tab-btn active" onclick="switchTab('wealth')">Wealth Over Time</button>
-        <button class="tab-btn" onclick="switchTab('distribution')">Outcome Distribution</button>
-        <button class="tab-btn" onclick="switchTab('breakeven')">Breakeven Analysis</button>
+      <h2><span class="icon">&#x1F4C8;</span> Wealth Over Time</h2>
+      <div class="chart-container">
+        <canvas id="chart-wealth"></canvas>
       </div>
+      <div class="chart-insight" id="insight-wealth"></div>
+    </div>
 
-      <div class="tab-content active" id="tab-wealth">
-        <div class="chart-container">
-          <canvas id="chart-wealth"></canvas>
-        </div>
+    <!-- Chart 2: Outcome Distribution -->
+    <div class="card">
+      <h2><span class="icon">&#x1F4CA;</span> Outcome Distribution at Year 30</h2>
+      <div class="chart-container">
+        <canvas id="chart-distribution"></canvas>
       </div>
-      <div class="tab-content" id="tab-distribution">
-        <div class="chart-container">
-          <canvas id="chart-distribution"></canvas>
-        </div>
+      <div class="chart-insight" id="insight-distribution"></div>
+    </div>
+
+    <!-- Chart 3: Breakeven Analysis -->
+    <div class="card">
+      <h2><span class="icon">&#x23F1;</span> Breakeven Analysis</h2>
+      <div class="chart-explainer" id="breakeven-explainer">
+        <strong>How to read this chart:</strong> It shows the cumulative probability that buying has
+        "broken even" by each year &mdash; meaning your home equity exceeds what you'd have by
+        renting and investing the difference. The higher the curve at your planned move-out year,
+        the more confident you can be that buying was the right call. If you plan to move before the
+        curve reaches your comfort level, renting may be the safer bet.
       </div>
-      <div class="tab-content" id="tab-breakeven">
-        <div class="chart-container">
-          <canvas id="chart-breakeven"></canvas>
-        </div>
+      <div class="chart-container">
+        <canvas id="chart-breakeven"></canvas>
       </div>
+      <div class="chart-insight" id="insight-breakeven"></div>
     </div>
 
     <div class="card">
@@ -713,6 +798,8 @@ let chartWealth = null;
 let chartDistribution = null;
 let chartBreakeven = null;
 
+let isFirstRun = true;
+
 // ============================================================
 // Area selection & preview
 // ============================================================
@@ -753,14 +840,13 @@ function updatePreview() {
 updatePreview();
 
 // ============================================================
-// Tab switching
+// Advanced toggle
 // ============================================================
-function switchTab(tab) {
-  document.querySelectorAll('.tab-btn').forEach((b, i) => {
-    b.classList.toggle('active', b.textContent.toLowerCase().includes(tab.substring(0, 4)));
-  });
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  document.getElementById('tab-' + tab).classList.add('active');
+function toggleAdvanced() {
+  const params = document.getElementById('advanced-params');
+  const arrow = document.getElementById('advanced-arrow');
+  const isVisible = params.classList.toggle('visible');
+  arrow.classList.toggle('open', isVisible);
 }
 
 // ============================================================
@@ -796,7 +882,7 @@ function runSimulation() {
       _runSim();
     } finally {
       btn.disabled = false;
-      btn.innerHTML = 'Run 30-Year Simulation';
+      btn.innerHTML = 'Re-run Simulation';
     }
   }, 50);
 }
@@ -853,30 +939,28 @@ function _runSim() {
     // === BUY PATH ===
     let homeValue = homePrice;
     let loanBalance = loanAmount;
-    let buySavings = 0; // Any extra savings buyer accumulates
+    let buySavings = 0;
     let totalBuySpent = upfrontCosts;
 
     // === RENT PATH ===
-    let rentInvestments = upfrontCosts; // Renter invests the upfront costs
+    let rentInvestments = upfrontCosts;
     let rentCostBasis = upfrontCosts;
     let currentRent = monthlyRent;
     let totalRentSpent = 0;
 
     let foundBreakeven = false;
-    let breakevenYear = years + 1; // sentinel: never breaks even
+    let breakevenYear = years + 1;
 
     // Year 0 state
-    const buyerEquityY0 = deposit; // Just the deposit
+    const buyerEquityY0 = deposit;
     allBuyWealth[0].push(buyerEquityY0);
     allRentWealth[0].push(upfrontCosts);
 
     for (let y = 1; y <= years; y++) {
-      // Randomise this year's rates
       const appRate = appreciationMean + appreciationStd * randn();
       const rgRate = rentGrowthMean + rentGrowthStd * randn();
       const invRate = investReturnMean + investStd * randn();
 
-      // --- BUY: annual costs ---
       const annualLpt = homeValue * lptRate;
       const annualMaint = homeValue * maintRate;
       const annualInsurance = homeValue * insuranceRate;
@@ -896,35 +980,27 @@ function _runSim() {
       const totalBuyAnnual = annualMortgagePayment + annualLpt + annualMaint + annualInsurance;
       homeValue *= (1 + appRate);
 
-      // --- RENT: annual costs ---
       const annualRent = currentRent * 12;
       currentRent *= (1 + rgRate);
 
-      // --- Difference: savings invested ---
       const monthlySavingsForRenter = (totalBuyAnnual / 12) - (annualRent / 12);
       if (monthlySavingsForRenter > 0) {
-        // Renter saves the difference
         rentInvestments += monthlySavingsForRenter * 12;
         rentCostBasis += monthlySavingsForRenter * 12;
       } else {
-        // Buyer has lower costs - buyer invests the difference
         buySavings += (-monthlySavingsForRenter) * 12;
       }
 
-      // Apply investment returns
       rentInvestments *= (1 + invRate);
       if (buySavings > 0) buySavings *= (1 + invRate);
 
-      // --- Wealth calculations ---
       const buyerEquity = Math.max(0, homeValue - Math.max(0, loanBalance)) + buySavings;
-      // Apply CGT on rent investments gain
       const rentGain = Math.max(0, rentInvestments - rentCostBasis);
       const renterWealth = rentInvestments - (rentGain * CGT_RATE);
 
       allBuyWealth[y].push(buyerEquity);
       allRentWealth[y].push(renterWealth);
 
-      // Breakeven: first year buyer wealth >= renter wealth
       if (!foundBreakeven && buyerEquity >= renterWealth) {
         breakevenYear = y;
         foundBreakeven = true;
@@ -965,8 +1041,10 @@ function _runSim() {
   const medBuyFinal = median(allBuyWealth[years]);
   const medRentFinal = median(allRentWealth[years]);
   const buyWinsPct = (finalDifferences.filter(d => d > 0).length / numSims * 100).toFixed(1);
-  const medBreakeven = median(breakevenYears.filter(y => y <= years));
-  const breakevenPossible = breakevenYears.filter(y => y <= years).length;
+  const validBreakevens = breakevenYears.filter(y => y <= years);
+  const medBreakeven = validBreakevens.length > 0 ? median(validBreakevens) : null;
+  const breakevenP80 = validBreakevens.length > 0 ? percentile(validBreakevens, 80) : null;
+  const breakevenPossible = validBreakevens.length;
 
   // ============================================================
   // Display Results
@@ -974,27 +1052,70 @@ function _runSim() {
   const resultsSection = document.getElementById('results-section');
   resultsSection.classList.add('visible');
 
+  // Hide defaults note after first manual run
+  if (!isFirstRun) {
+    document.getElementById('defaults-note').style.display = 'none';
+  }
+  isFirstRun = false;
+
   // Verdict
   const banner = document.getElementById('verdict-banner');
   const buyWins = parseFloat(buyWinsPct) >= 50;
   banner.className = 'verdict-banner ' + (buyWins ? 'buy-wins' : 'rent-wins');
   document.getElementById('verdict-title').textContent = buyWins
-    ? 'Buying looks favourable in this area'
-    : 'Renting may be the better financial move';
+    ? 'Based on these assumptions, buying likely builds more wealth'
+    : 'Based on these assumptions, renting + investing may come out ahead';
   document.getElementById('verdict-sub').textContent = buyWins
-    ? `In ${buyWinsPct}% of simulations, buying builds more wealth over 30 years.`
-    : `In ${(100 - parseFloat(buyWinsPct)).toFixed(1)}% of simulations, renting + investing comes out ahead.`;
+    ? `In ${buyWinsPct}% of ${numSims.toLocaleString()} simulations, buying builds more wealth over 30 years.`
+    : `In ${(100 - parseFloat(buyWinsPct)).toFixed(1)}% of ${numSims.toLocaleString()} simulations, renting + investing comes out ahead over 30 years.`;
+
+  // Time-horizon context in verdict
+  if (medBreakeven !== null) {
+    document.getElementById('verdict-horizon').textContent =
+      `If you might move in under ${Math.round(medBreakeven)} years, the picture changes \u2014 see the breakeven analysis below.`;
+  } else {
+    document.getElementById('verdict-horizon').textContent = '';
+  }
 
   // Metrics
+  document.getElementById('m-buypct').textContent = buyWinsPct + '%';
   document.getElementById('m-buywealth').textContent = fmtEuro(medBuyFinal);
   document.getElementById('m-rentwealth').textContent = fmtEuro(medRentFinal);
-  document.getElementById('m-breakeven').textContent = breakevenPossible > 0 ? `Year ${medBreakeven}` : 'Never';
-  document.getElementById('m-buypct').textContent = buyWinsPct + '%';
+  if (medBreakeven !== null) {
+    document.getElementById('m-breakeven').textContent = `Year ${Math.round(medBreakeven)}`;
+    document.getElementById('m-breakeven-range').textContent =
+      `80% break even by Year ${Math.round(breakevenP80)}`;
+  } else {
+    document.getElementById('m-breakeven').textContent = 'Never';
+    document.getElementById('m-breakeven-range').textContent = '';
+  }
 
   // ============================================================
   // Charts
   // ============================================================
   const yearLabels = Array.from({ length: years + 1 }, (_, i) => i);
+
+  // Breakeven annotation for charts
+  const breakevenAnnotation = medBreakeven !== null ? {
+    breakeven: {
+      type: 'line',
+      xMin: Math.round(medBreakeven),
+      xMax: Math.round(medBreakeven),
+      borderColor: 'rgba(245,158,11,0.7)',
+      borderWidth: 2,
+      borderDash: [6, 4],
+      label: {
+        display: true,
+        content: `Breakeven: Yr ${Math.round(medBreakeven)}`,
+        position: 'start',
+        backgroundColor: 'rgba(245,158,11,0.85)',
+        color: '#fff',
+        font: { size: 11, weight: 'bold' },
+        padding: { x: 6, y: 3 },
+        borderRadius: 4,
+      }
+    }
+  } : {};
 
   // -- Chart 1: Wealth over time --
   if (chartWealth) chartWealth.destroy();
@@ -1077,22 +1198,32 @@ function _runSim() {
               return ctx.dataset.label + ': ' + fmtEuro(ctx.raw);
             }
           }
+        },
+        annotation: {
+          annotations: breakevenAnnotation
         }
       },
       scales: {
         x: {
           title: { display: true, text: 'Year', color: '#8b8fa3' },
           ticks: { color: '#8b8fa3' },
-          grid: { color: 'rgba(255,255,255,0.04)' },
+          grid: { color: 'rgba(255,255,255,0.06)' },
         },
         y: {
           title: { display: true, text: 'Net Worth', color: '#8b8fa3' },
           ticks: { color: '#8b8fa3', callback: v => fmtEuro(v) },
-          grid: { color: 'rgba(255,255,255,0.04)' },
+          grid: { color: 'rgba(255,255,255,0.06)' },
         }
       }
     }
   });
+
+  // Wealth insight
+  document.getElementById('insight-wealth').innerHTML = medBreakeven !== null
+    ? `<strong>Key insight:</strong> Buying pulls ahead around Year ${Math.round(medBreakeven)} in the median case. ` +
+      `The shaded bands show the 10th\u201390th percentile range \u2014 wider bands mean more uncertainty.`
+    : `<strong>Key insight:</strong> In the median scenario, renting + investing stays ahead throughout the 30 years. ` +
+      `The shaded bands show the 10th\u201390th percentile range.`;
 
   // -- Chart 2: Final wealth distribution --
   if (chartDistribution) chartDistribution.destroy();
@@ -1119,9 +1250,12 @@ function _runSim() {
     rentBins[idx]++;
   });
 
-  // Normalise to %
   const buyPct = buyBins.map(b => (b / numSims * 100));
   const rentPct = rentBins.map(b => (b / numSims * 100));
+
+  // Median markers on distribution
+  const medBuyBinIdx = Math.min(Math.floor((medBuyFinal - minVal) / binWidth), numBins - 1);
+  const medRentBinIdx = Math.min(Math.floor((medRentFinal - minVal) / binWidth), numBins - 1);
 
   chartDistribution = new Chart(document.getElementById('chart-distribution'), {
     type: 'bar',
@@ -1152,6 +1286,46 @@ function _runSim() {
             title: items => items[0].label,
             label: ctx => ctx.dataset.label + ': ' + ctx.raw.toFixed(1) + '% of simulations'
           }
+        },
+        annotation: {
+          annotations: {
+            buyMedian: {
+              type: 'line',
+              xMin: medBuyBinIdx,
+              xMax: medBuyBinIdx,
+              borderColor: '#34d399',
+              borderWidth: 2,
+              borderDash: [4, 3],
+              label: {
+                display: true,
+                content: 'Buyer Median: ' + fmtEuro(medBuyFinal),
+                position: 'start',
+                backgroundColor: 'rgba(52,211,153,0.85)',
+                color: '#fff',
+                font: { size: 10, weight: 'bold' },
+                padding: { x: 5, y: 2 },
+                borderRadius: 3,
+              }
+            },
+            rentMedian: {
+              type: 'line',
+              xMin: medRentBinIdx,
+              xMax: medRentBinIdx,
+              borderColor: '#ff6b8a',
+              borderWidth: 2,
+              borderDash: [4, 3],
+              label: {
+                display: true,
+                content: 'Renter Median: ' + fmtEuro(medRentFinal),
+                position: 'end',
+                backgroundColor: 'rgba(255,107,138,0.85)',
+                color: '#fff',
+                font: { size: 10, weight: 'bold' },
+                padding: { x: 5, y: 2 },
+                borderRadius: 3,
+              }
+            }
+          }
         }
       },
       scales: {
@@ -1167,11 +1341,18 @@ function _runSim() {
         y: {
           title: { display: true, text: 'Probability (%)', color: '#8b8fa3' },
           ticks: { color: '#8b8fa3', callback: v => v.toFixed(1) + '%' },
-          grid: { color: 'rgba(255,255,255,0.04)' },
+          grid: { color: 'rgba(255,255,255,0.06)' },
         }
       }
     }
   });
+
+  // Distribution insight
+  const buySpread = fmtEuro(percentile(allBuyWealth[years], 90) - percentile(allBuyWealth[years], 10));
+  const rentSpread = fmtEuro(percentile(allRentWealth[years], 90) - percentile(allRentWealth[years], 10));
+  document.getElementById('insight-distribution').innerHTML =
+    `<strong>Key insight:</strong> Buyers have a wider range of outcomes (${buySpread} spread) ` +
+    `compared to renters (${rentSpread}). Buying concentrates risk in property; renting diversifies through the market.`;
 
   // -- Chart 3: Breakeven cumulative distribution --
   if (chartBreakeven) chartBreakeven.destroy();
@@ -1179,12 +1360,61 @@ function _runSim() {
   breakevenYears.forEach(y => {
     if (y <= years) breakevenDist[y]++;
   });
-  // Cumulative
   const cumulativeBreakeven = [];
   let cumSum = 0;
   for (let y = 0; y <= years; y++) {
     cumSum += breakevenDist[y];
     cumulativeBreakeven.push((cumSum / numSims * 100));
+  }
+
+  // Find the year where curve crosses 50%
+  let cross50 = null;
+  for (let y = 0; y <= years; y++) {
+    if (cumulativeBreakeven[y] >= 50) { cross50 = y; break; }
+  }
+
+  const breakevenAnnotations = {
+    threshold: {
+      type: 'line',
+      yMin: 50,
+      yMax: 50,
+      borderColor: 'rgba(255,255,255,0.2)',
+      borderDash: [6, 4],
+      borderWidth: 1,
+      label: {
+        display: true,
+        content: '50% likelihood',
+        position: 'end',
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        color: '#8b8fa3',
+        font: { size: 10 },
+        padding: { x: 4, y: 2 },
+        borderRadius: 3
+      }
+    }
+  };
+
+  if (cross50 !== null) {
+    breakevenAnnotations.crossPoint = {
+      type: 'point',
+      xValue: cross50,
+      yValue: 50,
+      backgroundColor: '#f59e0b',
+      borderColor: '#fff',
+      borderWidth: 2,
+      radius: 6,
+    };
+    breakevenAnnotations.crossLabel = {
+      type: 'label',
+      xValue: cross50,
+      yValue: 58,
+      content: [`Year ${cross50}`],
+      backgroundColor: 'rgba(245,158,11,0.85)',
+      color: '#fff',
+      font: { size: 11, weight: 'bold' },
+      padding: { x: 6, y: 3 },
+      borderRadius: 4,
+    };
   }
 
   chartBreakeven = new Chart(document.getElementById('chart-breakeven'), {
@@ -1193,7 +1423,7 @@ function _runSim() {
       labels: yearLabels,
       datasets: [
         {
-          label: '% of Simulations Where Buying Has Broken Even',
+          label: 'Cumulative breakeven probability',
           data: cumulativeBreakeven,
           borderColor: '#f59e0b',
           backgroundColor: 'rgba(245,158,11,0.1)',
@@ -1201,15 +1431,6 @@ function _runSim() {
           tension: 0.3,
           pointRadius: 0,
           borderWidth: 2.5,
-        },
-        {
-          label: '50% Threshold',
-          data: new Array(years + 1).fill(50),
-          borderColor: 'rgba(255,255,255,0.2)',
-          borderDash: [6, 4],
-          fill: false,
-          pointRadius: 0,
-          borderWidth: 1,
         }
       ]
     },
@@ -1220,23 +1441,23 @@ function _runSim() {
         legend: { labels: { color: '#8b8fa3', usePointStyle: true, pointStyle: 'line' } },
         tooltip: {
           callbacks: {
-            label: ctx => {
-              if (ctx.datasetIndex === 1) return '50% threshold';
-              return ctx.raw.toFixed(1) + '% broken even by year ' + ctx.label;
-            }
+            label: ctx => ctx.raw.toFixed(1) + '% of simulations have broken even by year ' + ctx.label
           }
+        },
+        annotation: {
+          annotations: breakevenAnnotations
         }
       },
       scales: {
         x: {
           title: { display: true, text: 'Year', color: '#8b8fa3' },
           ticks: { color: '#8b8fa3' },
-          grid: { color: 'rgba(255,255,255,0.04)' },
+          grid: { color: 'rgba(255,255,255,0.06)' },
         },
         y: {
           title: { display: true, text: 'Cumulative Probability (%)', color: '#8b8fa3' },
           ticks: { color: '#8b8fa3', callback: v => v + '%' },
-          grid: { color: 'rgba(255,255,255,0.04)' },
+          grid: { color: 'rgba(255,255,255,0.06)' },
           min: 0,
           max: 100
         }
@@ -1244,9 +1465,27 @@ function _runSim() {
     }
   });
 
-  // Scroll to results
-  resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Breakeven insight
+  const pct10yr = cumulativeBreakeven[Math.min(10, years)].toFixed(0);
+  const pct15yr = cumulativeBreakeven[Math.min(15, years)].toFixed(0);
+  document.getElementById('insight-breakeven').innerHTML = cross50 !== null
+    ? `<strong>Key insight:</strong> There's a 50% chance buying breaks even by Year ${cross50}. ` +
+      `By Year 10, ${pct10yr}% of simulations have broken even; by Year 15, it's ${pct15yr}%.`
+    : `<strong>Key insight:</strong> Fewer than 50% of simulations break even within 30 years. ` +
+      `By Year 10, ${pct10yr}% have broken even; by Year 15, ${pct15yr}%.`;
+
+  // Scroll to results (but not on initial auto-run)
+  if (!isFirstRun) {
+    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
+
+// ============================================================
+// Auto-run on page load
+// ============================================================
+window.addEventListener('DOMContentLoaded', () => {
+  runSimulation();
+});
 </script>
 </body>
 </html>
