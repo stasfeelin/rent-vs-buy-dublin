@@ -368,6 +368,44 @@
     grid-template-columns: 1fr 1fr;
   }
 
+  /* HTB toggle */
+  .htb-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+    margin-bottom: 2px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+
+  .htb-toggle input[type="checkbox"] {
+    width: auto;
+    accent-color: var(--green);
+  }
+
+  .htb-detail {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+    margin-bottom: 4px;
+    padding: 8px 12px;
+    background: rgba(52,211,153,0.06);
+    border: 1px solid rgba(52,211,153,0.15);
+    border-radius: 8px;
+    display: none;
+  }
+
+  .htb-detail.visible {
+    display: block;
+  }
+
+  .htb-detail .htb-amount {
+    color: var(--green);
+    font-weight: 700;
+  }
+
   /* Advanced toggle */
   .advanced-toggle {
     display: flex;
@@ -590,6 +628,16 @@
       </div>
     </div>
 
+    <!-- Help to Buy -->
+    <label class="htb-toggle">
+      <input type="checkbox" id="htb-toggle" onchange="updateHtb()"> Help to Buy (HTB) &mdash; First-time buyer, new build
+      <span class="info-tip" data-tip="Revenue tax refund for first-time buyers of new-build homes. Up to 10% of purchase price, max &euro;30,000. Only applies to new builds up to &euro;500,000.">?</span>
+    </label>
+    <div class="htb-detail" id="htb-detail">
+      HTB rebate: <span class="htb-amount" id="htb-amount">&euro;0</span> &mdash;
+      reduces your out-of-pocket deposit. Applies to new-build homes up to &euro;500,000.
+    </div>
+
     <!-- Advanced parameters (collapsed) -->
     <div class="advanced-toggle" id="advanced-toggle" onclick="toggleAdvanced()">
       <span class="arrow" id="advanced-arrow">&#x25B6;</span>
@@ -729,6 +777,7 @@
         <h3>Buying Scenario</h3>
         <ul>
           <li>Upfront costs: deposit + stamp duty + legal fees (~&euro;3,000)</li>
+          <li>If Help to Buy is enabled: up to &euro;30,000 tax rebate (10% of price, new builds &le;&euro;500k) reduces out-of-pocket cost</li>
           <li>Monthly mortgage payments (principal + interest, annuity method)</li>
           <li>Annual costs: Local Property Tax (LPT), maintenance, insurance</li>
           <li>Home value appreciates with randomised annual growth (normal distribution around your chosen mean)</li>
@@ -736,11 +785,16 @@
         </ul>
         <h3>Renting Scenario</h3>
         <ul>
-          <li>Saves the deposit + upfront costs, invested from year 0</li>
+          <li>Saves the buyer's out-of-pocket upfront costs, invested from year 0</li>
           <li>Pays monthly rent (grows annually with randomised rent inflation)</li>
           <li>Any monthly savings vs buying costs are invested</li>
           <li>Investment returns are randomised (normal distribution)</li>
           <li>Irish Capital Gains Tax (33%) applied on investment gains at end</li>
+        </ul>
+        <h3>Government Schemes</h3>
+        <ul>
+          <li><strong>Help to Buy (HTB):</strong> Modelled as a reduction in buyer's upfront cash outlay. The rebate goes to the buyer, reducing the amount the renter would have had to invest.</li>
+          <li><strong>First Home Scheme (FHS):</strong> Not modelled. FHS is a shared equity arrangement where the state co-invests up to 30% of the home price. This fundamentally changes the risk/return profile and would require a third simulation path. Consult a financial advisor if considering FHS.</li>
         </ul>
         <h3>Randomisation</h3>
         <ul>
@@ -835,9 +889,39 @@ function updatePreview() {
   const yld = ((d.rent * 12 / d.price) * 100).toFixed(1);
   document.getElementById('preview-ratio').textContent = ratio + 'x';
   document.getElementById('preview-yield').textContent = yld + '%';
+  // Refresh HTB amount if toggled
+  if (document.getElementById('htb-toggle').checked) updateHtb();
 }
 
 updatePreview();
+
+// ============================================================
+// Help to Buy
+// ============================================================
+function getHtbAmount() {
+  const htbEnabled = document.getElementById('htb-toggle').checked;
+  if (!htbEnabled) return 0;
+  const data = getSelectedData();
+  const price = data.price;
+  // HTB: 10% of purchase price, max €30,000, only on new builds up to €500,000
+  if (price > 500000) return 0;
+  return Math.min(price * 0.10, 30000);
+}
+
+function updateHtb() {
+  const htbEnabled = document.getElementById('htb-toggle').checked;
+  const detail = document.getElementById('htb-detail');
+  detail.classList.toggle('visible', htbEnabled);
+  if (htbEnabled) {
+    const amount = getHtbAmount();
+    const amountEl = document.getElementById('htb-amount');
+    if (amount === 0) {
+      amountEl.textContent = '\u20AC0 (price exceeds \u20AC500,000 limit)';
+    } else {
+      amountEl.textContent = '\u20AC' + amount.toLocaleString('en-IE');
+    }
+  }
+}
 
 // ============================================================
 // Advanced toggle
@@ -924,6 +1008,10 @@ function _runSim() {
 
   const upfrontCosts = deposit + (homePrice * stampDuty) + LEGAL_FEES;
 
+  // Help to Buy: reduces buyer's out-of-pocket cost
+  const htbRebate = getHtbAmount();
+  const buyerOutOfPocket = upfrontCosts - htbRebate;
+
   // Volatilities
   const appreciationStd = 0.06;
   const rentGrowthStd = 0.02;
@@ -943,8 +1031,8 @@ function _runSim() {
     let totalBuySpent = upfrontCosts;
 
     // === RENT PATH ===
-    let rentInvestments = upfrontCosts;
-    let rentCostBasis = upfrontCosts;
+    let rentInvestments = buyerOutOfPocket; // Renter invests what the buyer paid out-of-pocket
+    let rentCostBasis = buyerOutOfPocket;
     let currentRent = monthlyRent;
     let totalRentSpent = 0;
 
@@ -954,7 +1042,7 @@ function _runSim() {
     // Year 0 state
     const buyerEquityY0 = deposit;
     allBuyWealth[0].push(buyerEquityY0);
-    allRentWealth[0].push(upfrontCosts);
+    allRentWealth[0].push(buyerOutOfPocket);
 
     for (let y = 1; y <= years; y++) {
       const appRate = appreciationMean + appreciationStd * randn();
